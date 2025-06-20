@@ -12,24 +12,33 @@ jobs:
     name: 'Register Package'
     runs-on: ubuntu-latest
     steps:
-    - name: ServiceNow DevOps Register Package
-    # You may pin to the exact commit or the version.           
-      uses: ServiceNow/servicenow-devops-register-package@v3.1.0
+    # - name: ServiceNow DevOps Register Package
+    # # You may pin to the exact commit or the version.           
+    #   uses: ServiceNow/servicenow-devops-register-package@v3.1.0
+    #   with:
+    #       # Devops Integration Token
+    #       devops-integration-token: ${{ secrets.SN_DEVOPS_TOKEN }}
+    #       # ServiceNow Instance URL
+    #       instance-url: ${{ secrets.SN_INSTANCE_URL }}
+    #       # Orchestration Tool Id of the tool created in ServiceNow
+    #       tool-id: ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
+    #       # Github Context
+    #       context-github: ${{ toJSON(github) }}
+    #       # List of Artifacts in JSON format
+    #       artifacts: '[{"name": "app-devops-ci.jar","version": "1.0","semanticVersion": "1.0.0","repositoryName": "${{ github.repository }}" }]'
+    #       # Name of the Package that contains list of artifacts
+    #       package-name: 'app-devops-change-velocity.war'
+    #       # Display Name of Job
+    #       job-name: 'Register Package'
+    - uses: actions/checkout@v3
+    - name: Set up JDK 11
+      uses: actions/setup-java@v3
       with:
-          # Devops Integration Token
-          devops-integration-token: ${{ secrets.SN_DEVOPS_TOKEN }}
-          # ServiceNow Instance URL
-          instance-url: ${{ secrets.SN_INSTANCE_URL }}
-          # Orchestration Tool Id of the tool created in ServiceNow
-          tool-id: ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
-          # Github Context
-          context-github: ${{ toJSON(github) }}
-          # List of Artifacts in JSON format
-          artifacts: '[{"name": "app-devops-ci.jar","version": "1.0","semanticVersion": "1.0.0","repositoryName": "${{ github.repository }}" }]'
-          # Name of the Package that contains list of artifacts
-          package-name: 'app-devops-change-velocity.war'
-          # Display Name of Job
-          job-name: 'Register Package'
+        java-version: '11'
+        distribution: 'temurin'
+        cache: maven
+    - name: Build with Maven
+      run: mvn clean compile
 
   change:
     # jobs that must complete successfully before this job will run
