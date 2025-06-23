@@ -1,6 +1,6 @@
 # This workflow uses ServiceNow custom actions that are certified by ServiceNow.
 
-name: CD GitHub workflow renamed once
+name: CD GitHub workflow renamed twice
 
 on: workflow_dispatch
   #workflow_run: # @
