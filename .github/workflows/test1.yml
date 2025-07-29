@@ -5,6 +5,7 @@ on:
 jobs:
   build:
     name: 'Build'
+    environment: dev
     runs-on: ubuntu-latest
     steps:
       - name: Print Hello World
