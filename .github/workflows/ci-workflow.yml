@@ -131,16 +131,10 @@ jobs:
               stageName:    $stage,
               pipelineName: $pipeline
             }' > payload.json
-          # HMAC-SHA256 signing (matches DevOpsTokenAuthenticatorHMAC):
-          #   key = base64(secret_token)   (per gs.base64Encode in _prepareSignature)
-          #   sig = hex( HMAC-SHA256(key, exact request body bytes) )
-          #   header value: 'sha256=' + sig
-          KEY_B64=$(printf '%s' "${SN_TOKEN}" | base64 -w 0)
-          SIG_HEX=$(openssl dgst -sha256 -hmac "${KEY_B64}" < payload.json | awk '{print $NF}')
           curl -fsS -X POST \
             "${SN_URL}/api/sn_devops/v2/devops/tool/test?toolId=${SN_TOOL_ID}&testType=JUnit" \
             -H "Content-Type: application/json" \
-            -H "x-hub-signature-256: sha256=${SIG_HEX}" \
+            -H "sn_devops_token: ${SN_TOKEN}" \
             --data-binary @payload.json
 
   # ---------------------------------------------------------------------------
@@ -197,12 +191,10 @@ jobs:
               stageName:    $stage,
               pipelineName: $pipeline
             }' > payload.json
-          KEY_B64=$(printf '%s' "${SN_TOKEN}" | base64 -w 0)
-          SIG_HEX=$(openssl dgst -sha256 -hmac "${KEY_B64}" < payload.json | awk '{print $NF}')
           curl -fsS -X POST \
             "${SN_URL}/api/sn_devops/v2/devops/tool/softwarequality?toolId=${SN_TOOL_ID}" \
             -H "Content-Type: application/json" \
-            -H "x-hub-signature-256: sha256=${SIG_HEX}" \
+            -H "sn_devops_token: ${SN_TOKEN}" \
             --data-binary @payload.json
 
   # ---------------------------------------------------------------------------
@@ -281,12 +273,10 @@ jobs:
               stageName:    $stage,
               pipelineName: $pipeline
             }' > payload.json
-          KEY_B64=$(printf '%s' "${SN_TOKEN}" | base64 -w 0)
-          SIG_HEX=$(openssl dgst -sha256 -hmac "${KEY_B64}" < payload.json | awk '{print $NF}')
           curl -fsS -X POST \
             "${SN_URL}/api/sn_devops/v2/devops/tool/test?toolId=${SN_TOOL_ID}&testType=Load" \
             -H "Content-Type: application/json" \
-            -H "x-hub-signature-256: sha256=${SIG_HEX}" \
+            -H "sn_devops_token: ${SN_TOKEN}" \
             --data-binary @payload.json
 
   # ---------------------------------------------------------------------------
