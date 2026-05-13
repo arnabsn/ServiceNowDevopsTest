@@ -1,6 +1,22 @@
-# This workflow uses ServiceNow custom actions that are certified by ServiceNow.
+# DEF0808785 - CI workflow exercising the summary-relation staging path.
+#
+# Order: build -> test -> sonarScan -> performanceTest -> registerArtifact -> change
+#
+# Test, Sonar and Performance summaries are posted BEFORE the artifact is
+# registered, so each summary's lookup of CorpSite-artifact@1.0.0 will miss
+# and the relation is staged in sn_devops_artifact_staging via staging_type
+# 'summary_artifact_version_relation'. When registerArtifact inserts the
+# sn_devops_artifact_version row, the after-insert BR
+# "Process staged summary relations for artifact version" fires
+# DevOpsSummaryStagedRequestsProcessor.processArtifactVersionStaged which
+# replays all three staging rows.
+#
+# Bypasses ServiceNow/servicenow-devops-test-report and -sonar because, as
+# of v6, neither action exposes inputs for packages / artifacts /
+# buildNumber+stageName+pipelineName. See Option C in the design doc for
+# the long-term action change.
 
-name: CI GitHub workflow
+name: DevOps CI - summary staging
 
 on: workflow_dispatch
   # push:
@@ -9,170 +25,308 @@ on: workflow_dispatch
   #   branches: [ "main" ]
   #   types: [opened, synchronize, reopened]
 
+env:
+  # --- Logical names that show up on the ServiceNow summary records ---
+  PACKAGE_NAME:   "CorpSite-pkg1"
+  ARTIFACT_NAME:  "CorpSite-artifact"
+  ARTIFACT_VER:   "1.0.0"
+  STAGE_NAME_TEST:        "Test"
+  STAGE_NAME_SONAR:       "Sonar Scan"
+  STAGE_NAME_PERFORMANCE: "Performance Test"
+
 jobs:
+
+  # ---------------------------------------------------------------------------
+  # 1. Build
+  # ---------------------------------------------------------------------------
   build:
     name: 'Build'
     runs-on: ubuntu-latest
-
     steps:
-    - uses: actions/checkout@v3
-    - name: Set up JDK 11
-      uses: actions/setup-java@v3
-      with:
-        java-version: '11'
-        distribution: 'temurin'
-        cache: maven
-    - name: Build with Maven
-      run: mvn clean compile
+      - uses: actions/checkout@v4
+      - name: Set up JDK 11
+        uses: actions/setup-java@v4
+        with:
+          java-version: '11'
+          distribution: 'temurin'
+          cache: maven
+      - name: Build with Maven
+        run: mvn clean compile
 
-  # test:
-  #   name: 'Test'
-  #   needs: build
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #   - name: Checkout
-  #     uses: actions/checkout@v4.0.0
-
-  # test:
-  #   name: 'Test'
-  #   needs: build
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #   - name: Checkout
-  #     uses: actions/checkout@v3.1.0
-        
-  #   - name: Run Tests with Maven
-  #     run: mvn -B test --file pom.xml
-  #   - name: ServiceNow DevOps Unit Test Results            
-  #     uses: ServiceNow/servicenow-devops-test-report@v3.1.0
-  #     with:
-  #         # Devops Integration Token
-  #         devops-integration-token: ${{ secrets.SN_DEVOPS_TOKEN }}
-  #         # devops-integration-user-name: '${{ secrets.SN_DEVOPS_USER }}'
-  #         # devops-integration-user-password: '${{ secrets.SN_DEVOPS_PASSWORD }}'
-  #         # ServiceNow Instance Name
-  #         instance-url: ${{ secrets.SN_INSTANCE_URL }}
-  #         # Orchestration Tool Id
-  #         tool-id: ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
-  #         # Job Name
-  #         job-name: 'Test' # Should be same name as declared in 'name' clause of the current Stage
-  #         # Github Context
-  #         context-github: ${{ toJSON(github) }}
-  #         # JUnit xml report file name with path
-  #         xml-report-filename: testng.xml #if only JUnit tests, use target/surefire-reports/testng-results.xml
-  #         # if both JUnit & TestNG tests, use target/surefire-reports/testng-junit-results/testng-results.xml
-        
-  #   - name: Run Tests with Maven
-  #     run: mvn -B test --file pom.xml
-
-  #   - name: ServiceNow DevOps Unit Test Results
-  #   # You may pin to the exact commit or the version.
-  #     uses: ServiceNow/servicenow-devops-test-report@v3.1.0
-  #     with:
-  #         # Devops Integration Token
-  #         devops-integration-token: ${{ secrets.SN_DEVOPS_TOKEN }}
-  #         # ServiceNow Instance Name
-  #         instance-url: ${{ secrets.SN_INSTANCE_URL }}
-  #         # Orchestration Tool Id
-  #         tool-id: ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
-  #         # Job Name
-  #         job-name: 'Test' # Should be same name as declared in 'name' clause of the current Stage
-  #         # Github Context
-  #         context-github: ${{ toJSON(github) }}
-  #         # JUnit xml report file name with path
-  #         xml-report-filename: target/surefire-reports/testng-results.xml # if only JUnit tests, use target/surefire-reports/testng-results.xml
-                                                                          # if both JUnit & TestNG tests, use target/surefire-reports/testng-junit-results/testng-results.xml
-
-  registerArtifact:
-    name: 'RegisterArtifact'
+  # ---------------------------------------------------------------------------
+  # 2. Unit-test summary with package + artifact attributes
+  # ---------------------------------------------------------------------------
+  test:
+    name: 'Test'
     needs: build
     runs-on: ubuntu-latest
     steps:
-    - name: ServiceNow DevOps Register Artifact
-    # You may pin to the exact commit or the version.          
-      uses: ServiceNow/servicenow-devops-register-artifact@v3.1.0
-      with:
-          # Devops Integration Token
+      - uses: actions/checkout@v4
+
+      - name: Run tests with Maven
+        run: mvn -B test --file pom.xml
+
+      - name: Parse JUnit/TestNG results
+        id: junit
+        run: |
+          REPORT="target/surefire-reports/testng-results.xml"
+          if [ ! -f "$REPORT" ]; then
+            echo "No report at $REPORT - failing"; exit 1
+          fi
+          PASSED=$(grep -oE 'passed="[0-9]+"'  "$REPORT" | head -1 | grep -oE '[0-9]+' || echo 0)
+          FAILED=$(grep -oE 'failed="[0-9]+"'  "$REPORT" | head -1 | grep -oE '[0-9]+' || echo 0)
+          SKIPPED=$(grep -oE 'skipped="[0-9]+"' "$REPORT" | head -1 | grep -oE '[0-9]+' || echo 0)
+          TOTAL=$(grep -oE 'total="[0-9]+"'   "$REPORT" | head -1 | grep -oE '[0-9]+' || echo $((PASSED+FAILED+SKIPPED)))
+          if [ "$TOTAL" -gt 0 ]; then
+            PCT=$(awk "BEGIN{printf \"%.2f\", ($PASSED/$TOTAL)*100}")
+          else
+            PCT=0
+          fi
+          START=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          echo "passed=$PASSED"   >> "$GITHUB_OUTPUT"
+          echo "failed=$FAILED"   >> "$GITHUB_OUTPUT"
+          echo "skipped=$SKIPPED" >> "$GITHUB_OUTPUT"
+          echo "total=$TOTAL"     >> "$GITHUB_OUTPUT"
+          echo "pct=$PCT"         >> "$GITHUB_OUTPUT"
+          echo "start=$START"     >> "$GITHUB_OUTPUT"
+
+      - name: Post unit-test summary to ServiceNow
+        env:
+          SN_URL:     ${{ secrets.SN_INSTANCE_URL }}
+          SN_TOKEN:   ${{ secrets.SN_DEVOPS_TOKEN }}
+          SN_TOOL_ID: ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
+        run: |
+          FINISH=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          jq -n \
+            --arg name      "${{ github.workflow }}#${{ github.run_number }}" \
+            --argjson passed  ${{ steps.junit.outputs.passed }} \
+            --argjson failed  ${{ steps.junit.outputs.failed }} \
+            --argjson skipped ${{ steps.junit.outputs.skipped }} \
+            --argjson total   ${{ steps.junit.outputs.total }} \
+            --argjson pct     ${{ steps.junit.outputs.pct }} \
+            --arg start     "${{ steps.junit.outputs.start }}" \
+            --arg finish    "$FINISH" \
+            --arg pkg       "${{ env.PACKAGE_NAME }}" \
+            --arg artName   "${{ env.ARTIFACT_NAME }}" \
+            --arg artVer    "${{ env.ARTIFACT_VER }}" \
+            --arg build     "${{ github.run_number }}" \
+            --arg stage     "${{ env.STAGE_NAME_TEST }}" \
+            --arg pipeline  "${{ github.workflow }}" '
+            {
+              name: $name,
+              duration: 0,
+              passedTests: $passed,
+              failedTests: $failed,
+              skippedTests: $skipped,
+              blockedTests: 0,
+              totalTests: $total,
+              startTime: $start,
+              finishTime: $finish,
+              passingPercent: $pct,
+              packages:  [{name: $pkg}],
+              artifacts: [{name: $artName, version: $artVer}],
+              buildNumber:  $build,
+              stageName:    $stage,
+              pipelineName: $pipeline
+            }' > payload.json
+          curl -fsS -X POST \
+            "${SN_URL}/api/sn_devops/v1/devops/tool/test?toolId=${SN_TOOL_ID}&testType=JUnit" \
+            -H "Content-Type: application/json" \
+            -H "sn_devops.DevOpsToken: ${SN_TOOL_ID}:${SN_TOKEN}" \
+            --data @payload.json
+
+  # ---------------------------------------------------------------------------
+  # 3. Sonar / Software-Quality summary with package + artifact attributes
+  # ---------------------------------------------------------------------------
+  sonarScan:
+    name: 'Sonar Scan'
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch Sonar metrics
+        id: sonar
+        env:
+          SONAR_URL:         ${{ secrets.SONAR_URL }}
+          SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
+          SONAR_TOKEN:       ${{ secrets.SONAR_TOKEN }}
+        run: |
+          METRICS="bugs,vulnerabilities,code_smells,coverage,duplicated_lines_density,ncloc"
+          JSON=$(curl -fsS -u "${SONAR_TOKEN}:" \
+            "${SONAR_URL}/api/measures/component?component=${SONAR_PROJECT_KEY}&metricKeys=${METRICS}")
+          echo "$JSON" > sonar-metrics.json
+
+      - name: Post software-quality summary to ServiceNow
+        env:
+          SN_URL:            ${{ secrets.SN_INSTANCE_URL }}
+          SN_TOKEN:          ${{ secrets.SN_DEVOPS_TOKEN }}
+          SN_TOOL_ID:        ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
+          SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
+          SONAR_URL:         ${{ secrets.SONAR_URL }}
+        run: |
+          jq -n \
+            --slurpfile sonar sonar-metrics.json \
+            --arg projectKey "${SONAR_PROJECT_KEY}" \
+            --arg sonarUrl   "${SONAR_URL}" \
+            --arg name       "${{ github.workflow }}#${{ github.run_number }}" \
+            --arg pkg        "${{ env.PACKAGE_NAME }}" \
+            --arg artName    "${{ env.ARTIFACT_NAME }}" \
+            --arg artVer     "${{ env.ARTIFACT_VER }}" \
+            --arg build      "${{ github.run_number }}" \
+            --arg stage      "${{ env.STAGE_NAME_SONAR }}" \
+            --arg pipeline   "${{ github.workflow }}" '
+            {
+              name: $name,
+              scanner: "SonarQube",
+              projectKey: $projectKey,
+              projectUrl: ($sonarUrl + "/dashboard?id=" + $projectKey),
+              metrics: ($sonar[0].component.measures
+                          | map({key: .metric, value: .value})),
+              packages:  [{name: $pkg}],
+              artifacts: [{name: $artName, version: $artVer}],
+              buildNumber:  $build,
+              stageName:    $stage,
+              pipelineName: $pipeline
+            }' > payload.json
+          curl -fsS -X POST \
+            "${SN_URL}/api/sn_devops/v1/devops/tool/softwarequality?toolId=${SN_TOOL_ID}" \
+            -H "Content-Type: application/json" \
+            -H "sn_devops.DevOpsToken: ${SN_TOOL_ID}:${SN_TOKEN}" \
+            --data @payload.json
+
+  # ---------------------------------------------------------------------------
+  # 4. Performance-test summary with package + artifact attributes
+  # ---------------------------------------------------------------------------
+  performanceTest:
+    name: 'Performance Test'
+    needs: sonarScan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run performance tests
+        run: mvn -B verify -Pperformance --file pom.xml
+
+      - name: Parse performance results
+        id: perf
+        run: |
+          REPORT="target/jmeter/results/perf-results.xml"
+          if [ ! -f "$REPORT" ]; then
+            echo "No perf report at $REPORT - failing"; exit 1
+          fi
+          PASSED=$(grep -oE 'passed="[0-9]+"'  "$REPORT" | head -1 | grep -oE '[0-9]+' || echo 0)
+          FAILED=$(grep -oE 'failed="[0-9]+"'  "$REPORT" | head -1 | grep -oE '[0-9]+' || echo 0)
+          SKIPPED=$(grep -oE 'skipped="[0-9]+"' "$REPORT" | head -1 | grep -oE '[0-9]+' || echo 0)
+          TOTAL=$(grep -oE 'total="[0-9]+"'   "$REPORT" | head -1 | grep -oE '[0-9]+' || echo $((PASSED+FAILED+SKIPPED)))
+          if [ "$TOTAL" -gt 0 ]; then
+            PCT=$(awk "BEGIN{printf \"%.2f\", ($PASSED/$TOTAL)*100}")
+          else
+            PCT=0
+          fi
+          START=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          echo "passed=$PASSED"   >> "$GITHUB_OUTPUT"
+          echo "failed=$FAILED"   >> "$GITHUB_OUTPUT"
+          echo "skipped=$SKIPPED" >> "$GITHUB_OUTPUT"
+          echo "total=$TOTAL"     >> "$GITHUB_OUTPUT"
+          echo "pct=$PCT"         >> "$GITHUB_OUTPUT"
+          echo "start=$START"     >> "$GITHUB_OUTPUT"
+
+      - name: Post performance-test summary to ServiceNow
+        env:
+          SN_URL:     ${{ secrets.SN_INSTANCE_URL }}
+          SN_TOKEN:   ${{ secrets.SN_DEVOPS_TOKEN }}
+          SN_TOOL_ID: ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
+        run: |
+          FINISH=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          jq -n \
+            --arg name      "${{ github.workflow }}-perf#${{ github.run_number }}" \
+            --argjson passed  ${{ steps.perf.outputs.passed }} \
+            --argjson failed  ${{ steps.perf.outputs.failed }} \
+            --argjson skipped ${{ steps.perf.outputs.skipped }} \
+            --argjson total   ${{ steps.perf.outputs.total }} \
+            --argjson pct     ${{ steps.perf.outputs.pct }} \
+            --arg start     "${{ steps.perf.outputs.start }}" \
+            --arg finish    "$FINISH" \
+            --arg pkg       "${{ env.PACKAGE_NAME }}" \
+            --arg artName   "${{ env.ARTIFACT_NAME }}" \
+            --arg artVer    "${{ env.ARTIFACT_VER }}" \
+            --arg build     "${{ github.run_number }}" \
+            --arg stage     "${{ env.STAGE_NAME_PERFORMANCE }}" \
+            --arg pipeline  "${{ github.workflow }}" '
+            {
+              name: $name,
+              duration: 0,
+              passedTests: $passed,
+              failedTests: $failed,
+              skippedTests: $skipped,
+              blockedTests: 0,
+              totalTests: $total,
+              startTime: $start,
+              finishTime: $finish,
+              passingPercent: $pct,
+              packages:  [{name: $pkg}],
+              artifacts: [{name: $artName, version: $artVer}],
+              buildNumber:  $build,
+              stageName:    $stage,
+              pipelineName: $pipeline
+            }' > payload.json
+          curl -fsS -X POST \
+            "${SN_URL}/api/sn_devops/v1/devops/tool/test?toolId=${SN_TOOL_ID}&testType=Load" \
+            -H "Content-Type: application/json" \
+            -H "sn_devops.DevOpsToken: ${SN_TOOL_ID}:${SN_TOKEN}" \
+            --data @payload.json
+
+  # ---------------------------------------------------------------------------
+  # 5. Register the artifact - second-to-last stage.
+  #    The insert of sn_devops_artifact_version fires the after-insert BR
+  #    "Process staged summary relations for artifact version", which replays
+  #    every Test / Sonar / Performance summary staged above.
+  # ---------------------------------------------------------------------------
+  registerArtifact:
+    name: 'RegisterArtifact'
+    needs: performanceTest
+    runs-on: ubuntu-latest
+    steps:
+      - name: ServiceNow DevOps Register Artifact
+        uses: ServiceNow/servicenow-devops-register-artifact@v3.1.0
+        with:
           devops-integration-token: ${{ secrets.SN_DEVOPS_TOKEN }}
-          # ServiceNow Instance URL
-          instance-url: ${{ secrets.SN_INSTANCE_URL }}
-          # Orchestration Tool Id
-          tool-id: ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
-          # Display Name of the Job
-          job-name: 'RegisterArtifact'
-          # Github Context
-          context-github: ${{ toJSON(github) }}
-          # List of Artifacts to be registered
-          artifacts: '[{"name": "app-devops-ci.jar","version": "1.0","semanticVersion": "1.0.0", "repositoryName": "${{ github.repository }}"}]'
+          instance-url:             ${{ secrets.SN_INSTANCE_URL }}
+          tool-id:                  ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
+          job-name:                 'RegisterArtifact'
+          context-github:           ${{ toJSON(github) }}
+          artifacts: >-
+            [{"name": "${{ env.ARTIFACT_NAME }}",
+              "version": "${{ env.ARTIFACT_VER }}",
+              "semanticVersion": "${{ env.ARTIFACT_VER }}",
+              "repositoryName": "${{ github.repository }}"}]
 
-  # sonarScan:
-  #   name: 'Sonar Scan'
-  #   needs: registerArtifact
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #   - name: Checkout
-  #     uses: actions/checkout@v4.0.0
-    
-  #   - name: ServiceNow DevOps Sonar Scan Results
-  #   # You may pin to the exact commit or the version.     
-  #     uses: ServiceNow/servicenow-devops-sonar@v3.1.0
-  #     with:
-  #         # ServiceNow Instance URL
-  #         instance-url: ${{ secrets.SN_INSTANCE_URL }}
-  #         # Devops Integration Token
-  #         devops-integration-token: ${{ secrets.SN_DEVOPS_TOKEN }}
-  #         # Orchestration Tool Id
-  #         tool-id: ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
-  #         # Github Context
-  #         context-github: ${{ toJSON(github) }}
-  #         # Display Name of the Job
-  #         job-name: 'Sonar Scan'
-  #         # Sonar Host URL
-  #         sonar-host-url: ${{ secrets.SONAR_URL }}
-  #         # Sonar Project Key
-  #         sonar-project-key: ${{ secrets.SONAR_PROJECT_KEY }}
-
-  # securityScan:
-  #   name: 'Security Scan'
-  #   needs: sonarScan
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #   - name: Checkout
-  #     uses: actions/checkout@v3.1.0
-
-  #   - name: ServiceNow DevOps Security Results
-  #     uses: ServiceNow/servicenow-devops-security-result@v3.1.0
-  #     with:
-  #         # Devops Integration Token
-  #         devops-integration-token: ${{ secrets.SN_DEVOPS_TOKEN }}
-  #         instance-url: ${{ secrets.SN_INSTANCE_URL }}
-  #         tool-id: ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
-  #         context-github: ${{ toJSON(github) }}
-  #         job-name: 'Security Scan'
-  #         security-result-attributes: '{"scanner": "Veracode", "applicationName": "10kflaws-72"}'
-
-
-  # change:
-  #   # jobs that must complete successfully before this job will run
-  #   needs: test
-  #   # type of machine to run the job on
-  #   runs-on: ubuntu-latest
-  #   name: 'ServiceNow DevOps Change'
-  #   steps:
-  #     - name: Sleep for 30 seconds
-  #       run: sleep 10s
-  #       shell: bash
-  #     - name: ServiceNow Change
-  #       uses: ServiceNow/servicenow-devops-change@dev
-  #       with:
-  #         # Devops Integration Token
-  #         devops-integration-token: ${{ secrets.SN_DEVOPS_TOKEN }}
-  #         # ServiceNow Instance URL
-  #         instance-url: ${{ secrets.SN_INSTANCE_URL }}
-  #         # Orchestration Tool Id
-  #         tool-id: ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
-  #         # GitHub Context
-  #         context-github: ${{ toJSON(github) }}
-  #         # Display Name of the Job
-  #         job-name: 'ServiceNow DevOps Change'
-  #         change-request: '{"attributes":{"requested_by":{"name": "DevOps System"},"assignment_group":{"name": "Change management"},"priority": "2","comments": "This is a sample pipeline script to be added in your change step","work_notes": "Update this to work_notes","start_date": "","end_date": ""}}'        
+  # ---------------------------------------------------------------------------
+  # 6. Change registration - last stage.
+  # ---------------------------------------------------------------------------
+  change:
+    name: 'ServiceNow DevOps Change'
+    needs: registerArtifact
+    runs-on: ubuntu-latest
+    steps:
+      - name: ServiceNow Change
+        uses: ServiceNow/servicenow-devops-change@v3.1.0
+        with:
+          devops-integration-token: ${{ secrets.SN_DEVOPS_TOKEN }}
+          instance-url:             ${{ secrets.SN_INSTANCE_URL }}
+          tool-id:                  ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
+          job-name:                 'ServiceNow DevOps Change'
+          context-github:           ${{ toJSON(github) }}
+          change-request: >-
+            {
+              "attributes": {
+                "requested_by":     {"name": "DevOps System"},
+                "assignment_group": {"name": "Change management"},
+                "priority":         "2",
+                "comments":         "Auto-created from CI pipeline ${{ github.workflow }} run #${{ github.run_number }}",
+                "work_notes":       "Artifact ${{ env.ARTIFACT_NAME }}@${{ env.ARTIFACT_VER }} registered in stage RegisterArtifact",
+                "start_date":       "",
+                "end_date":         ""
+              }
+            }
