@@ -97,47 +97,56 @@ jobs:
           SN_TOOL_ID: ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
         run: |
           FINISH=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          # workflow + repository + toolId required: InboundEventHandler's
-          # pre-process gate for GitHub test/SQ events looks up
-          # sn_devops_pipeline by name=${repository}/${workflow}, tool=${toolId}.
-          # Missing -> event marked Ignored with "Pipeline is NOT discovered or tracked".
+          # Matches ServiceNow/servicenow-devops-test-report@v6 payload shape:
+          # wrapped testSummaries[] + top-level toolId/buildNumber/buildId/
+          # attemptNumber/stageName/workflow/repository + testType. Plus
+          # DEF0808785 additions (packages, artifacts) at top level so the
+          # relations mapper sees them when iterating testSummaries.
           jq -nc \
             --arg name       "${{ github.workflow }}#${{ github.run_number }}" \
             --argjson passed  ${{ steps.junit.outputs.passed }} \
             --argjson failed  ${{ steps.junit.outputs.failed }} \
             --argjson skipped ${{ steps.junit.outputs.skipped }} \
             --argjson total   ${{ steps.junit.outputs.total }} \
-            --argjson pct     ${{ steps.junit.outputs.pct }} \
             --arg start      "${{ steps.junit.outputs.start }}" \
             --arg finish     "$FINISH" \
             --arg pkg        "${{ env.PACKAGE_NAME }}" \
             --arg artName    "${{ env.ARTIFACT_NAME }}" \
             --arg artVer     "${{ env.ARTIFACT_VER }}" \
-            --arg build      "${{ github.run_number }}" \
+            --arg toolId     "${SN_TOOL_ID}" \
+            --arg buildNumber  "${{ github.run_number }}" \
+            --arg buildId      "${{ github.run_id }}" \
+            --arg attemptNumber "${{ github.run_attempt }}" \
             --arg stage      "${{ env.STAGE_NAME_TEST }}" \
-            --arg pipeline   "${{ github.workflow }}" \
             --arg workflow   "${{ github.workflow }}" \
-            --arg repository "${{ github.repository }}" \
-            --arg toolId     "${SN_TOOL_ID}" '
+            --arg repository "${{ github.repository }}" '
             {
-              name: $name,
-              duration: 0,
-              passedTests: $passed,
-              failedTests: $failed,
-              skippedTests: $skipped,
-              blockedTests: 0,
-              totalTests: $total,
-              startTime: $start,
-              finishTime: $finish,
-              passingPercent: $pct,
-              packages:  [{name: $pkg}],
-              artifacts: [{name: $artName, version: $artVer}],
-              buildNumber:  $build,
-              stageName:    $stage,
-              pipelineName: $pipeline,
-              workflow:     $workflow,
-              repository:   $repository,
-              toolId:       $toolId
+              toolId:        $toolId,
+              buildNumber:   $buildNumber,
+              buildId:       $buildId,
+              attemptNumber: $attemptNumber,
+              stageName:     $stage,
+              workflow:      $workflow,
+              repository:    $repository,
+              testSummaries: [{
+                name:         $name,
+                passedTests:  $passed,
+                failedTests:  $failed,
+                skippedTests: $skipped,
+                ignoredTests: 0,
+                blockedTests: 0,
+                totalTests:   $total,
+                startTime:    $start,
+                endTime:      $finish,
+                duration:     0,
+                testType:     "JUnit",
+                suites:       []
+              }],
+              fileContent:   "",
+              errorMessage:  "",
+              testType:      "JUnit",
+              packages:      [{name: $pkg}],
+              artifacts:     [{name: $artName, version: $artVer}]
             }' > payload.json
           curl -fsS -X POST \
             "${SN_URL}/api/sn_devops/v2/devops/tool/test?toolId=${SN_TOOL_ID}&testType=JUnit" \
@@ -270,37 +279,45 @@ jobs:
             --argjson failed  ${{ steps.perf.outputs.failed }} \
             --argjson skipped ${{ steps.perf.outputs.skipped }} \
             --argjson total   ${{ steps.perf.outputs.total }} \
-            --argjson pct     ${{ steps.perf.outputs.pct }} \
             --arg start      "${{ steps.perf.outputs.start }}" \
             --arg finish     "$FINISH" \
             --arg pkg        "${{ env.PACKAGE_NAME }}" \
             --arg artName    "${{ env.ARTIFACT_NAME }}" \
             --arg artVer     "${{ env.ARTIFACT_VER }}" \
-            --arg build      "${{ github.run_number }}" \
+            --arg toolId     "${SN_TOOL_ID}" \
+            --arg buildNumber  "${{ github.run_number }}" \
+            --arg buildId      "${{ github.run_id }}" \
+            --arg attemptNumber "${{ github.run_attempt }}" \
             --arg stage      "${{ env.STAGE_NAME_PERFORMANCE }}" \
-            --arg pipeline   "${{ github.workflow }}" \
             --arg workflow   "${{ github.workflow }}" \
-            --arg repository "${{ github.repository }}" \
-            --arg toolId     "${SN_TOOL_ID}" '
+            --arg repository "${{ github.repository }}" '
             {
-              name: $name,
-              duration: 0,
-              passedTests: $passed,
-              failedTests: $failed,
-              skippedTests: $skipped,
-              blockedTests: 0,
-              totalTests: $total,
-              startTime: $start,
-              finishTime: $finish,
-              passingPercent: $pct,
-              packages:  [{name: $pkg}],
-              artifacts: [{name: $artName, version: $artVer}],
-              buildNumber:  $build,
-              stageName:    $stage,
-              pipelineName: $pipeline,
-              workflow:     $workflow,
-              repository:   $repository,
-              toolId:       $toolId
+              toolId:        $toolId,
+              buildNumber:   $buildNumber,
+              buildId:       $buildId,
+              attemptNumber: $attemptNumber,
+              stageName:     $stage,
+              workflow:      $workflow,
+              repository:    $repository,
+              testSummaries: [{
+                name:         $name,
+                passedTests:  $passed,
+                failedTests:  $failed,
+                skippedTests: $skipped,
+                ignoredTests: 0,
+                blockedTests: 0,
+                totalTests:   $total,
+                startTime:    $start,
+                endTime:      $finish,
+                duration:     0,
+                testType:     "Load",
+                suites:       []
+              }],
+              fileContent:   "",
+              errorMessage:  "",
+              testType:      "Load",
+              packages:      [{name: $pkg}],
+              artifacts:     [{name: $artName, version: $artVer}]
             }' > payload.json
           curl -fsS -X POST \
             "${SN_URL}/api/sn_devops/v2/devops/tool/test?toolId=${SN_TOOL_ID}&testType=Load" \
