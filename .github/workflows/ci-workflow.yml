@@ -97,7 +97,9 @@ jobs:
           SN_TOOL_ID: ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
         run: |
           FINISH=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          jq -n \
+          # compact JSON: server re-stringifies the parsed body before HMAC, so
+          # signing extra whitespace from a pretty-printed file would fail.
+          jq -nc \
             --arg name      "${{ github.workflow }}#${{ github.run_number }}" \
             --argjson passed  ${{ steps.junit.outputs.passed }} \
             --argjson failed  ${{ steps.junit.outputs.failed }} \
@@ -129,11 +131,17 @@ jobs:
               stageName:    $stage,
               pipelineName: $pipeline
             }' > payload.json
+          # HMAC-SHA256 signing (matches DevOpsTokenAuthenticatorHMAC):
+          #   key = base64(secret_token)   (per gs.base64Encode in _prepareSignature)
+          #   sig = hex( HMAC-SHA256(key, exact request body bytes) )
+          #   header value: 'sha256=' + sig
+          KEY_B64=$(printf '%s' "${SN_TOKEN}" | base64 -w 0)
+          SIG_HEX=$(openssl dgst -sha256 -hmac "${KEY_B64}" < payload.json | awk '{print $NF}')
           curl -fsS -X POST \
-            "${SN_URL}/api/sn_devops/v1/devops/tool/test?toolId=${SN_TOOL_ID}&testType=JUnit" \
+            "${SN_URL}/api/sn_devops/v2/devops/tool/test?toolId=${SN_TOOL_ID}&testType=JUnit" \
             -H "Content-Type: application/json" \
-            -H "sn_devops.DevOpsToken: ${SN_TOOL_ID}:${SN_TOKEN}" \
-            --data @payload.json
+            -H "x-hub-signature-256: sha256=${SIG_HEX}" \
+            --data-binary @payload.json
 
   # ---------------------------------------------------------------------------
   # 3. Sonar / Software-Quality summary with package + artifact attributes
@@ -165,7 +173,7 @@ jobs:
           SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
           SONAR_URL:         ${{ secrets.SONAR_URL }}
         run: |
-          jq -n \
+          jq -nc \
             --slurpfile sonar sonar-metrics.json \
             --arg projectKey "${SONAR_PROJECT_KEY}" \
             --arg sonarUrl   "${SONAR_URL}" \
@@ -189,11 +197,13 @@ jobs:
               stageName:    $stage,
               pipelineName: $pipeline
             }' > payload.json
+          KEY_B64=$(printf '%s' "${SN_TOKEN}" | base64 -w 0)
+          SIG_HEX=$(openssl dgst -sha256 -hmac "${KEY_B64}" < payload.json | awk '{print $NF}')
           curl -fsS -X POST \
-            "${SN_URL}/api/sn_devops/v1/devops/tool/softwarequality?toolId=${SN_TOOL_ID}" \
+            "${SN_URL}/api/sn_devops/v2/devops/tool/softwarequality?toolId=${SN_TOOL_ID}" \
             -H "Content-Type: application/json" \
-            -H "sn_devops.DevOpsToken: ${SN_TOOL_ID}:${SN_TOKEN}" \
-            --data @payload.json
+            -H "x-hub-signature-256: sha256=${SIG_HEX}" \
+            --data-binary @payload.json
 
   # ---------------------------------------------------------------------------
   # 4. Performance-test summary with package + artifact attributes
@@ -239,7 +249,7 @@ jobs:
           SN_TOOL_ID: ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
         run: |
           FINISH=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          jq -n \
+          jq -nc \
             --arg name      "${{ github.workflow }}-perf#${{ github.run_number }}" \
             --argjson passed  ${{ steps.perf.outputs.passed }} \
             --argjson failed  ${{ steps.perf.outputs.failed }} \
@@ -271,11 +281,13 @@ jobs:
               stageName:    $stage,
               pipelineName: $pipeline
             }' > payload.json
+          KEY_B64=$(printf '%s' "${SN_TOKEN}" | base64 -w 0)
+          SIG_HEX=$(openssl dgst -sha256 -hmac "${KEY_B64}" < payload.json | awk '{print $NF}')
           curl -fsS -X POST \
-            "${SN_URL}/api/sn_devops/v1/devops/tool/test?toolId=${SN_TOOL_ID}&testType=Load" \
+            "${SN_URL}/api/sn_devops/v2/devops/tool/test?toolId=${SN_TOOL_ID}&testType=Load" \
             -H "Content-Type: application/json" \
-            -H "sn_devops.DevOpsToken: ${SN_TOOL_ID}:${SN_TOKEN}" \
-            --data @payload.json
+            -H "x-hub-signature-256: sha256=${SIG_HEX}" \
+            --data-binary @payload.json
 
   # ---------------------------------------------------------------------------
   # 5. Register the artifact - second-to-last stage.
