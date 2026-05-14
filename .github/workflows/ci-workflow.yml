@@ -360,7 +360,7 @@ jobs:
       uses: ServiceNow/servicenow-devops-register-package@v3.1.0
       with:
           # Devops Integration Token
-          devops-integration-token: ${{ secrets.SN_DEVOPS_INTEGRATION_TOKEN }}
+          devops-integration-token: ${{ secrets.SN_DEVOPS_TOKEN }}
           # ServiceNow Instance URL
           instance-url: ${{ secrets.SN_INSTANCE_URL }}
           # Orchestration Tool Id of the tool created in ServiceNow
@@ -385,7 +385,7 @@ jobs:
   # ---------------------------------------------------------------------------
   change:
     name: 'ServiceNow DevOps Change'
-    needs: registerArtifact
+    needs: registerPackage
     runs-on: ubuntu-latest
     steps:
       - name: ServiceNow Change
