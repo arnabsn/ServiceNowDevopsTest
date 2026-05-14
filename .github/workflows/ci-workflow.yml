@@ -211,7 +211,6 @@ jobs:
               ref:         $ref,
               refName:     $refName,
               refType:     $refType,
-              packages:    [{name: $pkg}],
               artifacts:   [{name: $artName, version: $artVer}],
               buildNumber: $runNumber,
               stageName:   $stage,
