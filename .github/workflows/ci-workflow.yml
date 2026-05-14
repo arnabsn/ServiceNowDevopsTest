@@ -376,7 +376,7 @@ jobs:
                   "repositoryName": "${{ github.repository }}"
               }]
           # Name of the Package that contains list of artifacts
-          package-name: "${ env.PACKAGE_NAME }"
+          package-name: "${{ env.PACKAGE_NAME }}"
           # Display Name of Job
           job-name: 'Register Package'
 
