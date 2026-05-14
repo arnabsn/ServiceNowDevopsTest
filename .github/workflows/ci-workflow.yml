@@ -27,7 +27,7 @@ on: workflow_dispatch
 
 env:
   # --- Logical names that show up on the ServiceNow summary records ---
-  PACKAGE_NAME:   "CorpSite-pkg1"
+  PACKAGE_NAME:   "CorpSite-pkg1.${{ github.run_number }}"
   ARTIFACT_NAME:  "CorpSite-artifact"
   ARTIFACT_VER:   "1.0.${{ github.run_number }}"
   STAGE_NAME_TEST:        "Test"
@@ -349,6 +349,36 @@ jobs:
               "version": "${{ env.ARTIFACT_VER }}",
               "semanticVersion": "${{ env.ARTIFACT_VER }}",
               "repositoryName": "${{ github.repository }}"}]
+
+  registerPackage:
+    name: 'Register Package'
+    needs: registerArtifact
+    runs-on: ubuntu-latest
+    steps:
+    - name: ServiceNow DevOps Register Package
+    # You may pin to the exact commit or the version.           
+      uses: ServiceNow/servicenow-devops-register-package@v3.1.0
+      with:
+          # Devops Integration Token
+          devops-integration-token: ${{ secrets.SN_DEVOPS_INTEGRATION_TOKEN }}
+          # ServiceNow Instance URL
+          instance-url: ${{ secrets.SN_INSTANCE_URL }}
+          # Orchestration Tool Id of the tool created in ServiceNow
+          tool-id: ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
+          # Github Context
+          context-github: ${{ toJSON(github) }}
+          # List of Artifacts in JSON format
+          artifacts: >-
+            [{
+                  "name": "${{ env.ARTIFACT_NAME }}",
+                  "version": "${{ env.ARTIFACT_VER }}",
+                  "semanticVersion": "${{ env.ARTIFACT_VER }}",
+                  "repositoryName": "${{ github.repository }}"
+              }]
+          # Name of the Package that contains list of artifacts
+          package-name: "${ env.PACKAGE_NAME }"
+          # Display Name of Job
+          job-name: 'Register Package'
 
   # ---------------------------------------------------------------------------
   # 6. Change registration - last stage.
