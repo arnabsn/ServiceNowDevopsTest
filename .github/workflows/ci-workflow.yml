@@ -29,7 +29,7 @@ env:
   # --- Logical names that show up on the ServiceNow summary records ---
   PACKAGE_NAME:   "CorpSite-pkg1"
   ARTIFACT_NAME:  "CorpSite-artifact"
-  ARTIFACT_VER:   "1.0.0"
+  ARTIFACT_VER:   "1.0.${{ github.run_number }}"
   STAGE_NAME_TEST:        "Test"
   STAGE_NAME_SONAR:       "Sonar Scan"
   STAGE_NAME_PERFORMANCE: "Performance Test"
