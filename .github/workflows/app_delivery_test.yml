@@ -50,7 +50,7 @@ jobs:
           SONAR_HOST_URL: ${{ secrets.SONAR_URL }}
         with:
           args: >
-            -Dsonar.projectKey=payments-service
+            -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }}
 
   # ── Stage 4 (Change) ──
   delta:
