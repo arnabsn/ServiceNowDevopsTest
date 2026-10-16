@@ -27,13 +27,13 @@ jobs:
       - name: Create change for prod
         uses: ServiceNow/servicenow-devops-change@v7.1.0
         with:
-          devops-integration-token: ${{ secrets.SN_DEVOPS_TOKEN }}
+          devops-integration-token: ${{ secrets.SN_DEVOPS_INTEGRATION_TOKEN }}
           instance-url: ${{ secrets.SN_INSTANCE_URL }}
           tool-id: ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
           context-github: ${{ toJSON(github) }}
           job-name: 'change-prod'
           deployment-gate: '{"environment":"prod","jobName":"deploy-prod"}'
-          change-request: '{"attributes":{"short_description":"N3 gate prod","description":"N3 callback matching test","implementation_plan":"n/a","backout_plan":"n/a","test_plan":"n/a"}}'
+          change-request: '{"attributes":{"chg_model":{"name":"Devops"},"short_description":"N3 gate prod","description":"N3 callback matching test","implementation_plan":"n/a","backout_plan":"n/a","test_plan":"n/a"}}'
 
   deploy-prod:
     name: deploy-prod
@@ -53,13 +53,13 @@ jobs:
         if: ${{ !inputs.skip_change_prod_eu }}
         uses: ServiceNow/servicenow-devops-change@v7.1.0
         with:
-          devops-integration-token: ${{ secrets.SN_DEVOPS_TOKEN }}
+          devops-integration-token: ${{ secrets.SN_DEVOPS_INTEGRATION_TOKEN }}
           instance-url: ${{ secrets.SN_INSTANCE_URL }}
           tool-id: ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
           context-github: ${{ toJSON(github) }}
           job-name: 'change-prod-eu'
           deployment-gate: '{"environment":"prod-eu","jobName":"deploy-prod-eu"}'
-          change-request: '{"attributes":{"short_description":"N3 gate prod-eu","description":"N3 callback matching test","implementation_plan":"n/a","backout_plan":"n/a","test_plan":"n/a"}}'
+          change-request: '{"attributes":{"chg_model":{"name":"Devops"},"short_description":"N3 gate prod-eu","description":"N3 callback matching test","implementation_plan":"n/a","backout_plan":"n/a","test_plan":"n/a"}}'
       - name: Note when the change step is skipped
         if: ${{ inputs.skip_change_prod_eu }}
         run: echo "change step skipped on purpose"
@@ -81,13 +81,13 @@ jobs:
       - name: Create change for special environment
         uses: ServiceNow/servicenow-devops-change@v7.1.0
         with:
-          devops-integration-token: ${{ secrets.SN_DEVOPS_TOKEN }}
+          devops-integration-token: ${{ secrets.SN_DEVOPS_INTEGRATION_TOKEN }}
           instance-url: ${{ secrets.SN_INSTANCE_URL }}
           tool-id: ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
           context-github: ${{ toJSON(github) }}
           job-name: 'change-special'
           deployment-gate: '{"environment":"Prod #2","jobName":"deploy-special"}'
-          change-request: '{"attributes":{"short_description":"N3 gate special env","description":"N3 callback matching test","implementation_plan":"n/a","backout_plan":"n/a","test_plan":"n/a"}}'
+          change-request: '{"attributes":{"chg_model":{"name":"Devops"},"short_description":"N3 gate special env","description":"N3 callback matching test","implementation_plan":"n/a","backout_plan":"n/a","test_plan":"n/a"}}'
 
   deploy-special:
     name: deploy-special
