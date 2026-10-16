@@ -27,9 +27,9 @@ jobs:
       - name: Create change for prod
         uses: ServiceNow/servicenow-devops-change@v7.1.0
         with:
-          devops-integration-token: ${{ secrets.SN_DEVOPS_TOKEN_2 }}
+          devops-integration-token: ${{ secrets.SN_DEVOPS_INTEGRATION_TOKEN }}
           instance-url: ${{ secrets.SN_INSTANCE_URL }}
-          tool-id: ${{ secrets.SN_DEVOPS_TOOL_2 }}
+          tool-id: ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
           context-github: ${{ toJSON(github) }}
           job-name: 'change-prod'
           deployment-gate: '{"environment":"prod","jobName":"deploy-prod"}'
@@ -53,9 +53,9 @@ jobs:
         if: ${{ !inputs.skip_change_prod_eu }}
         uses: ServiceNow/servicenow-devops-change@v7.1.0
         with:
-          devops-integration-token: ${{ secrets.SN_DEVOPS_TOKEN_2 }}
+          devops-integration-token: ${{ secrets.SN_DEVOPS_INTEGRATION_TOKEN }}
           instance-url: ${{ secrets.SN_INSTANCE_URL }}
-          tool-id: ${{ secrets.SN_DEVOPS_TOOL_2 }}
+          tool-id: ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
           context-github: ${{ toJSON(github) }}
           job-name: 'change-prod-eu'
           deployment-gate: '{"environment":"prod-eu","jobName":"deploy-prod-eu"}'
@@ -81,9 +81,9 @@ jobs:
       - name: Create change for special environment
         uses: ServiceNow/servicenow-devops-change@v7.1.0
         with:
-          devops-integration-token: ${{ secrets.SN_DEVOPS_TOKEN_2 }}
+          devops-integration-token: ${{ secrets.SN_DEVOPS_INTEGRATION_TOKEN }}
           instance-url: ${{ secrets.SN_INSTANCE_URL }}
-          tool-id: ${{ secrets.SN_DEVOPS_TOOL_2 }}
+          tool-id: ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
           context-github: ${{ toJSON(github) }}
           job-name: 'change-special'
           deployment-gate: '{"environment":"Prod #2","jobName":"deploy-special"}'
