@@ -1,0 +1,103 @@
+name: s4-job-endings
+
+# Linear chain only (parallel jobs are not supported for GitHub in DevOps Change Velocity).
+# Pick one scenario per run. Only the matching job misbehaves; the rest pass or are skipped.
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: "Which job ending to produce"
+        type: choice
+        default: timeout
+        options:
+          - timeout            # s4-timeout exceeds timeout-minutes
+          - cancelled          # s4-cancel sleeps; cancel the run yourself while it runs
+          - reviewer_rejects   # s4-reject waits on environment s4-reject; reject it in GitHub
+          - bad_runner_label   # s4-runner queues on a label no runner has; cancel the run after ~2 minutes
+          - skipped_by_needs   # s4-fail fails, so s4-after-fail and later jobs are skipped
+
+permissions:
+  contents: read
+
+jobs:
+  s4-start:
+    name: s4-start
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "scenario = ${{ inputs.scenario }}"
+
+  # Variant: job timeout
+  s4-timeout:
+    name: s4-timeout
+    needs: [s4-start]
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Run past the timeout
+        if: ${{ inputs.scenario == 'timeout' }}
+        run: sleep 150
+      - name: Finish normally
+        if: ${{ inputs.scenario != 'timeout' }}
+        run: echo "ok"
+
+  # Variant: skipped because needs failed
+  s4-fail:
+    name: s4-fail
+    needs: [s4-timeout]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail on purpose
+        if: ${{ inputs.scenario == 'skipped_by_needs' }}
+        run: exit 1
+      - name: Finish normally
+        if: ${{ inputs.scenario != 'skipped_by_needs' }}
+        run: echo "ok"
+
+  s4-after-fail:
+    name: s4-after-fail
+    needs: [s4-fail]
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "skipped when s4-fail fails"
+
+  # Variant: cancelled mid-run (cancel the whole run from the Actions UI)
+  s4-cancel:
+    name: s4-cancel
+    needs: [s4-after-fail]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait to be cancelled
+        if: ${{ inputs.scenario == 'cancelled' }}
+        run: sleep 600
+      - name: Finish normally
+        if: ${{ inputs.scenario != 'cancelled' }}
+        run: echo "ok"
+
+  # Variant: reviewer rejects the environment
+  # Needs an environment named s4-reject with a required reviewer and NO deployment protection app rule.
+  s4-reject:
+    name: s4-reject
+    needs: [s4-cancel]
+    if: ${{ inputs.scenario == 'reviewer_rejects' }}
+    runs-on: ubuntu-latest
+    environment: s4-reject
+    steps:
+      - run: echo "approved"
+
+  # Variant: runner label nobody serves; the job stays queued until the run is cancelled
+  s4-runner:
+    name: s4-runner
+    needs: [s4-reject]
+    if: ${{ inputs.scenario == 'bad_runner_label' && !failure() && !cancelled() }}
+    runs-on: no-such-runner-label-s4
+    steps:
+      - run: echo "never runs"
+
+  s4-final:
+    name: s4-final
+    needs: [s4-runner]
+    if: ${{ !failure() && !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "chain finished"
