@@ -96,8 +96,8 @@ jobs:
 
   s4-final:
     name: s4-final
-    needs: [s4-runner]
-    if: ${{ !failure() && !cancelled() }}
+    needs: [s4-timeout, s4-fail, s4-after-fail, s4-cancel, s4-reject, s4-runner]
+    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
     runs-on: ubuntu-latest
     steps:
       - run: echo "chain finished"
