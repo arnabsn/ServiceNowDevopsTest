@@ -1,0 +1,27 @@
+name: n5-commits
+
+# One gated job. Approve the CR when it appears so the run can succeed.
+# Run from Actions (workflow_dispatch), choosing the branch in "Use workflow from".
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['n5-*']
+
+permissions:
+  contents: read
+
+jobs:
+  n5-commits-gated:
+    name: n5-commits-gated
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ServiceNow/servicenow-devops-change@v7.1.0
+        with:
+          devops-integration-token: ${{ secrets.SN_DEVOPS_TOKEN }}
+          instance-url: ${{ secrets.SN_INSTANCE_URL }}
+          tool-id: ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
+          context-github: ${{ toJSON(github) }}
+          job-name: 'n5-commits-gated'
+          timeout: 600
+          change-request: '{"attributes":{"chg_model":{"name":"Devops"},"short_description":"N5 commit delta","description":"N5","implementation_plan":"n/a","backout_plan":"n/a","test_plan":"n/a"}}'
