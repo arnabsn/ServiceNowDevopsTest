@@ -1,0 +1,17 @@
+name: s7-app
+
+# Pipeline 1 of 2. Its name is a prefix of the other pipeline (s7-app-extra).
+# Run from Actions (workflow_dispatch).
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  s7-app-job:
+    name: s7-app-job
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "s7-app"
