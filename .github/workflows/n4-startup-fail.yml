@@ -1,0 +1,15 @@
+name: n4-startup-fail
+
+# Calls a reusable workflow that does not exist, so GitHub ends the run with startup_failure.
+# Run it from Actions (workflow_dispatch).
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  n4-bad-call:
+    name: n4-bad-call
+    uses: ./.github/workflows/n4-does-not-exist.yml
