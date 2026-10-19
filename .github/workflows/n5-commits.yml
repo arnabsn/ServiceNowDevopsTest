@@ -12,8 +12,15 @@ permissions:
   contents: read
 
 jobs:
+  n5-commits-start:
+    name: n5-commits-start
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "before the CR"
+
   n5-commits-gated:
     name: n5-commits-gated
+    needs: [n5-commits-start]
     runs-on: ubuntu-latest
     steps:
       - uses: ServiceNow/servicenow-devops-change@v7.1.0
