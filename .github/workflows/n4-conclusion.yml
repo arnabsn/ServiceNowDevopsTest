@@ -1,0 +1,50 @@
+name: n4-conclusion
+
+# Linear chain only. Pick one scenario per run.
+#   all_skipped       every job is skipped, run concludes with nothing executed
+#   rerun_after_close runs to the end; let the CR close, then Re-run all jobs from the Actions UI
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: "Which run conclusion case to run"
+        type: choice
+        default: rerun_after_close
+        options:
+          - rerun_after_close
+          - all_skipped
+
+permissions:
+  contents: read
+
+jobs:
+  n4-start:
+    name: n4-start
+    if: ${{ inputs.scenario == 'rerun_after_close' }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "scenario = ${{ inputs.scenario }}"
+
+  n4-gated:
+    name: n4-gated
+    needs: [n4-start]
+    if: ${{ inputs.scenario == 'rerun_after_close' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ServiceNow/servicenow-devops-change@v7.1.0
+        with:
+          devops-integration-token: ${{ secrets.SN_DEVOPS_TOKEN }}
+          instance-url: ${{ secrets.SN_INSTANCE_URL }}
+          tool-id: ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
+          context-github: ${{ toJSON(github) }}
+          job-name: 'n4-gated'
+          change-request: '{"attributes":{"chg_model":{"name":"Devops"},"short_description":"N4 run conclusion","description":"N4","implementation_plan":"n/a","backout_plan":"n/a","test_plan":"n/a"}}'
+
+  n4-final:
+    name: n4-final
+    needs: [n4-gated]
+    if: ${{ inputs.scenario == 'rerun_after_close' }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "chain finished"
