@@ -1,0 +1,87 @@
+name: s5 Job Names Workflow
+
+# Workflow name (above) deliberately differs from the file name (s5-job-names.yml).
+# Linear chain only. Pick one scenario per run; the other jobs are skipped.
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: "Which job-name case to run"
+        type: choice
+        default: special_chars
+        options:
+          - special_chars        # job name has , ^ = and '
+          - display_mismatch     # job display name differs from job-name given to the action
+          - called_parent_child  # called workflow, job-name = "parent / child"
+          - called_child_only    # called workflow, job-name = "child"
+
+permissions:
+  contents: read
+
+jobs:
+  s5-start:
+    name: s5-start
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "scenario = ${{ inputs.scenario }}"
+
+  # Variant: job name with , ^ = and '
+  special-chars:
+    name: "s5,a^b=c'd"
+    needs: [s5-start]
+    if: ${{ inputs.scenario == 'special_chars' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ServiceNow/servicenow-devops-change@v7.1.0
+        with:
+          devops-integration-token: ${{ secrets.SN_DEVOPS_TOKEN }}
+          instance-url: ${{ secrets.SN_INSTANCE_URL }}
+          tool-id: ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
+          context-github: ${{ toJSON(github) }}
+          job-name: "s5,a^b=c'd"
+          change-request: '{"attributes":{"chg_model":{"name":"Devops"},"short_description":"S5 special chars","description":"S5","implementation_plan":"n/a","backout_plan":"n/a","test_plan":"n/a"}}'
+
+  # Variant: display name differs from the job-name passed to the action
+  display-mismatch:
+    name: s5-display-name
+    needs: [special-chars]
+    if: ${{ inputs.scenario == 'display_mismatch' && !failure() && !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ServiceNow/servicenow-devops-change@v7.1.0
+        with:
+          devops-integration-token: ${{ secrets.SN_DEVOPS_TOKEN }}
+          instance-url: ${{ secrets.SN_INSTANCE_URL }}
+          tool-id: ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
+          context-github: ${{ toJSON(github) }}
+          job-name: 's5-other-name'
+          change-request: '{"attributes":{"chg_model":{"name":"Devops"},"short_description":"S5 display mismatch","description":"S5","implementation_plan":"n/a","backout_plan":"n/a","test_plan":"n/a"}}'
+
+  # Variant: called workflow, job-name "parent / child" (GitHub shows the job as "parent / child")
+  called-parent-child:
+    name: parent
+    needs: [display-mismatch]
+    if: ${{ inputs.scenario == 'called_parent_child' && !failure() && !cancelled() }}
+    uses: ./.github/workflows/s5-called.yml
+    with:
+      job_name: 'parent / child'
+    secrets: inherit
+
+  # Variant: called workflow, job-name "child" only
+  called-child-only:
+    name: parent2
+    needs: [called-parent-child]
+    if: ${{ inputs.scenario == 'called_child_only' && !failure() && !cancelled() }}
+    uses: ./.github/workflows/s5-called.yml
+    with:
+      job_name: 'child'
+    secrets: inherit
+
+  s5-final:
+    name: s5-final
+    needs: [special-chars, display-mismatch, called-parent-child, called-child-only]
+    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "chain finished"
