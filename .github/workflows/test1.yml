@@ -3,12 +3,13 @@ on:
   workflow_call
 
 jobs:
-  deploy:
-    name: 'Deploy'
+  dump:
     runs-on: ubuntu-latest
     steps:
-    - name: Run deployment scripts
-      run: echo 'Deployment step in progress...'
+      - name: Dump github context
+        env:
+          GITHUB_CONTEXT: ${{ toJSON(github) }}
+        run: echo "$GITHUB_CONTEXT"
       
     
     
